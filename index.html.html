@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 旅遊規劃助手 | 智慧行程與地圖導航</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Font Awesome 圖示庫 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 載入 Google Fonts (Noto Sans TC 與 Inter) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            700: '#0f766e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 自訂捲軸樣式，提升視覺質感 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* 時間軸連接線 */
+        .timeline-line::before {
+            content: '';
+            position: absolute;
+            top: 24px;
+            bottom: -24px;
+            left: 19px;
+            width: 2px;
+            background-color: #e2e8f0;
+            z-index: 0;
+        }
+        .timeline-item:last-child .timeline-line::before {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- 頂部導覽列 -->
+    <header class="bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-400 flex items-center justify-center text-white shadow-md">
+                    <i class="fa-solid fa-plane-departure text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-700 to-emerald-600">
+                        AI 旅遊規劃助手
+                    </h1>
+                    <p class="text-xs text-slate-500 hidden sm:block">Gemini AI 智慧排程 × Google Maps 實時導航</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button onclick="fillExampleData()" class="text-xs sm:text-sm bg-teal-50 hover:bg-teal-100 text-teal-700 font-medium px-3 py-2 rounded-xl transition flex items-center gap-1.5 border border-teal-200">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>填入範例</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 自訂提示訊息框 (取代 alert) -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- 主要內容區 -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        
+        <!-- 輸入表單卡片 -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-7 mb-8 transition-all">
+            <div class="flex items-center gap-2 mb-5">
+                <span class="w-7 h-7 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center text-sm font-bold">1</span>
+                <h2 class="text-lg font-bold text-slate-800">設定您的旅遊條件</h2>
+            </div>
+
+            <form id="planner-form" onsubmit="handleGenerate(event)" class="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-5">
+                <!-- 目的地 -->
+                <div class="md:col-span-4">
+                    <label for="destination" class="block text-sm font-semibold text-slate-700 mb-1.5">
+                        <i class="fa-solid fa-location-dot text-teal-600 mr-1"></i> 旅遊目的地 <span class="text-rose-500">*</span>
+                    </label>
+                    <input type="text" id="destination" required placeholder="例如：日本東京、台灣台南、京都..."
+                        class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition bg-slate-50 focus:bg-white">
+                </div>
+
+                <!-- 天數 -->
+                <div class="md:col-span-2">
+                    <label for="days" class="block text-sm font-semibold text-slate-700 mb-1.5">
+                        <i class="fa-regular fa-calendar text-teal-600 mr-1"></i> 旅遊天數
+                    </label>
+                    <select id="days" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition bg-slate-50 focus:bg-white">
+                        <option value="1">1 天 (一日遊)</option>
+                        <option value="2">2 天 1 夜</option>
+                        <option value="3" selected>3 天 2 夜</option>
+                        <option value="4">4 天 3 夜</option>
+                        <option value="5">5 天 4 夜</option>
+                    </select>
+                </div>
+
+                <!-- 偏好與必去景點 -->
+                <div class="md:col-span-6">
+                    <label for="preferences" class="block text-sm font-semibold text-slate-700 mb-1.5">
+                        <i class="fa-solid fa-heart text-rose-500 mr-1"></i> 旅遊偏好 / 必去景點
+                    </label>
+                    <input type="text" id="preferences" placeholder="例如：在地美食、古蹟巡禮、淺草寺、晴空塔、步調輕鬆..."
+                        class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition bg-slate-50 focus:bg-white">
+                </div>
+
+                <!-- 快速標籤與送出按鈕 -->
+                <div class="md:col-span-12 flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2 border-t border-slate-100">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-xs font-medium text-slate-500">熱門標籤：</span>
+                        <button type="button" onclick="addTag('在地必吃美食')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg transition">+ 在地必吃美食</button>
+                        <button type="button" onclick="addTag('歷史古蹟文化')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg transition">+ 歷史古蹟文化</button>
+                        <button type="button" onclick="addTag('網美打卡景點')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg transition">+ 網美打卡景點</button>
+                        <button type="button" onclick="addTag('大眾運輸為主')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg transition">+ 大眾運輸為主</button>
+                    </div>
+
+                    <button type="submit" id="generate-btn" class="w-full sm:w-auto bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-semibold px-6 py-3 rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+                        <i class="fa-solid fa-sparkles"></i>
+                        <span>生成 AI 專屬行程</span>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- 載入中狀態 (預設隱藏) -->
+        <div id="loading-state" class="hidden py-16 text-center bg-white rounded-2xl border border-slate-200 shadow-sm mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-teal-50 text-teal-600 mb-4 relative">
+                <i class="fa-solid fa-compass fa-spin text-3xl"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800 mb-1">Gemini AI 正在為您規劃最佳路線...</h3>
+            <p class="text-sm text-slate-500 max-w-md mx-auto">正在分析景點地理位置、計算順路程度並安排交通建議，請稍候約 5～10 秒。</p>
+        </div>
+
+        <!-- 結果展示區 (預設顯示歡迎引導，生成後顯示左右雙欄) -->
+        <div id="welcome-placeholder" class="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center">
+            <div class="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl">
+                <i class="fa-solid fa-map-location-dot"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-700 mb-2">準備好開啟下一趟旅程了嗎？</h3>
+            <p class="text-sm text-slate-500 max-w-lg mx-auto mb-5">
+                在上方輸入您想去的城市與偏好，AI 將自動為您編排每日順路行程，並結合 Google 地圖提供即時預覽與一鍵路線導航。
+            </p>
+            <button onclick="fillExampleData(); document.getElementById('generate-btn').click();" class="inline-flex items-center gap-2 text-sm font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-4 py-2.5 rounded-xl transition">
+                <i class="fa-solid fa-play"></i>
+                <span>立即體驗「東京 3 天 2 夜」範例規劃</span>
+            </button>
+        </div>
+
+        <!-- 生成後的行程與地圖雙欄區 -->
+        <div id="result-section" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            <!-- 左側：行程時間軸 (佔 7 欄) -->
+            <div class="lg:col-span-7 space-y-5">
+                <!-- 行程總覽標題卡 -->
+                <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2.5 py-0.5 text-xs font-bold bg-teal-100 text-teal-800 rounded-full">AI 規劃完成</span>
+                            <span id="trip-days-badge" class="text-xs font-medium text-slate-500"></span>
+                        </div>
+                        <h2 id="trip-title" class="text-xl font-bold text-slate-800 mt-1"></h2>
+                        <p id="trip-summary" class="text-sm text-slate-600 mt-1"></p>
+                    </div>
+                    <button onclick="copyItineraryText()" class="shrink-0 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
+                        <i class="fa-regular fa-copy"></i>
+                        <span>複製行程文字</span>
+                    </button>
+                </div>
+
+                <!-- 天數切換分頁標籤 (Tabs) -->
+                <div id="day-tabs" class="flex overflow-x-auto gap-2 pb-1">
+                    <!-- 動態生成 Day 1, Day 2... 按鈕 -->
+                </div>
+
+                <!-- 當日完整路線導航提示條 -->
+                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                            <i class="fa-solid fa-route"></i>
+                        </div>
+                        <div>
+                            <h4 id="current-day-theme" class="font-bold text-slate-800 text-sm sm:text-base"></h4>
+                            <p class="text-xs text-slate-600">點擊右側按鈕，可直接在 Google Maps 串連當日所有景點路線</p>
+                        </div>
+                    </div>
+                    <a id="day-route-link" href="#" target="_blank" rel="noopener noreferrer"
+                       class="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-sm transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-diamond-turn-right"></i>
+                        <span>開啟當日完整路線</span>
+                    </a>
+                </div>
+
+                <!-- 景點時間軸列表 -->
+                <div id="timeline-container" class="space-y-4">
+                    <!-- 動態生成每日景點卡片 -->
+                </div>
+            </div>
+
+            <!-- 右側：Google Maps 內嵌即時預覽視窗 (佔 5 欄，桌面版黏性定位) -->
+            <div class="lg:col-span-5 lg:sticky lg:top-24 space-y-4">
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <i class="fa-solid fa-map-pin text-rose-500"></i>
+                            <h3 id="map-preview-title" class="font-bold text-slate-800 text-sm truncate">地圖即時預覽</h3>
+                        </div>
+                        <a id="map-external-btn" href="#" target="_blank" rel="noopener noreferrer"
+                           class="shrink-0 text-xs font-semibold text-teal-600 hover:text-teal-700 flex items-center gap-1 bg-teal-50 px-2.5 py-1.5 rounded-lg border border-teal-200 transition">
+                            <span>在 Google 地圖開啟</span>
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                        </a>
+                    </div>
+                    
+                    <!-- 地圖 Iframe 容器 -->
+                    <div class="relative w-full h-[360px] sm:h-[450px] bg-slate-100">
+                        <iframe id="google-map-iframe"
+                            class="w-full h-full border-0"
+                            loading="lazy"
+                            referrerpolicy="no-referrer-when-downgrade"
+                            src="https://maps.google.com/maps?q=Taiwan&t=&z=7&ie=UTF8&iwloc=&output=embed">
+                        </iframe>
+                    </div>
+                    
+                    <div class="p-3 bg-slate-50 text-xs text-slate-500 flex items-center justify-between">
+                        <span><i class="fa-solid fa-circle-info text-teal-600 mr-1"></i>點擊左側任一景點卡片可切換地圖位置</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- 頁尾 -->
+    <footer class="bg-white border-t border-slate-200 py-5 mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
+            <p>© 2026 AI 旅遊規劃助手 (AI Travel Planner) — 智慧觀光與 AI 應用展示專案</p>
+            <p>Powered by Gemini AI & Google Maps</p>
+        </div>
+    </footer>
+
+    <!-- 核心邏輯 JavaScript -->
+    <script>
+        // 全域狀態管理
+        let currentItineraryData = null;
+        let selectedDayIndex = 0;
+
+        // 顯示自訂提示框 (Toast)
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const colors = {
+                info: 'bg-slate-800 text-white',
+                success: 'bg-teal-600 text-white',
+                error: 'bg-rose-600 text-white'
+            };
+            const icons = {
+                info: 'fa-circle-info',
+                success: 'fa-circle-check',
+                error: 'fa-circle-exclamation'
+            };
+
+            toast.className = `${colors[type]} px-4 py-3 rounded-xl shadow-lg flex items-center gap-2.5 text-sm font-medium transform transition-all duration-300 translate-y-2 opacity-0 pointer-events-auto`;
+            toast.innerHTML = `<i class="fa-solid ${icons[type]}"></i><span>${message}</span>`;
+            
+            container.appendChild(toast);
+            
+            // 進場動畫
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            // 3.5 秒後自動移除
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        // 快速加入偏好標籤
+        function addTag(tagText) {
+            const prefInput = document.getElementById('preferences');
+            const currentVal = prefInput.value.trim();
+            if (!currentVal) {
+                prefInput.value = tagText;
+            } else if (!currentVal.includes(tagText)) {
+                prefInput.value = `${currentVal}、${tagText}`;
+            }
+        }
+
+        // 填入展示用範例資料
+        function fillExampleData() {
+            document.getElementById('destination').value = '日本東京';
+            document.getElementById('days').value = '3';
+            document.getElementById('preferences').value = '淺草寺、晴空塔、築地市場美食、明治神宮、澀谷夜景，以地鐵交通為主';
+            showToast('已為您填入「日本東京 3 天 2 夜」範例條件！', 'info');
+        }
+
+        // 具備指數退避 (Exponential Backoff) 的 Gemini API 呼叫函式
+        async function fetchWithRetry(url, options, maxRetries = 4) {
+            const delays = [1000, 2000, 4000, 8000];
+            for (let i = 0; i <= maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    if (i === maxRetries) throw error;
+                    await new Promise(resolve => setTimeout(resolve, delays[i]));
+                }
+            }
+        }
+
+        // 處理表單送出與 AI 行程生成
+        async function handleGenerate(event) {
+            event.preventDefault();
+            
+            const destination = document.getElementById('destination').value.trim();
+            const days = parseInt(document.getElementById('days').value, 10);
+            const preferences = document.getElementById('preferences').value.trim() || '經典必去景點與在地美食';
+
+            if (!destination) {
+                showToast('請輸入旅遊目的地！', 'error');
+                return;
+            }
+
+            // 切換 UI 狀態為載入中
+            const btn = document.getElementById('generate-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-70', 'cursor-not-allowed');
+            document.getElementById('welcome-placeholder').classList.add('hidden');
+            document.getElementById('result-section').classList.add('hidden');
+            document.getElementById('loading-state').classList.remove('hidden');
+
+            // 建構 Gemini API 請求
+            const apiKey = ""; // 執行環境會自動注入 API Key
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+            const systemPrompt = `你是一位專業的台灣資深旅遊規劃師。請根據使用者的「目的地」、「天數」與「偏好/必去景點」，規劃出順路、合理且豐富的每日旅遊行程。
+請務必使用「繁體中文」回覆，並嚴格遵守指定的 JSON 格式輸出。
+注意：每個景點的「mapQuery」欄位必須是「目的地 + 精確景點名稱」（例如："東京 淺草寺" 或 "台南 赤崁樓"），以便 Google 地圖能精準搜尋定位。`;
+
+            const userQuery = `旅遊目的地：${destination}
+旅遊天數：${days} 天
+旅遊偏好與必去景點：${preferences}
+請為每一天安排 3 到 5 個順路的行程節點（包含早、午、晚景點或美食）。`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            tripTitle: { type: "STRING", description: "吸引人的行程總標題，例如：東京經典文化與美食三日漫遊" },
+                            summary: { type: "STRING", description: "50字以內的行程特色總結" },
+                            days: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        dayNumber: { type: "INTEGER", description: "第幾天，從 1 開始" },
+                                        theme: { type: "STRING", description: "當日主題，例如：下町風情與晴空塔夜景" },
+                                        activities: {
+                                            type: "ARRAY",
+                                            items: {
+                                                type: "OBJECT",
+                                                properties: {
+                                                    time: { type: "STRING", description: "建議時間，例如：09:30 - 11:30" },
+                                                    placeName: { type: "STRING", description: "景點或餐廳名稱" },
+                                                    mapQuery: { type: "STRING", description: "用於 Google 地圖搜尋的精準關鍵字，包含城市與景點名" },
+                                                    category: { type: "STRING", description: "分類，例如：景點、美食、購物、文化" },
+                                                    reason: { type: "STRING", description: "推薦原因與必看/必吃亮點（約30-50字）" },
+                                                    transport: { type: "STRING", description: "前往此地點的交通建議（約15-30字）" }
+                                                },
+                                                required: ["time", "placeName", "mapQuery", "category", "reason", "transport"]
+                                            }
+                                        }
+                                    },
+                                    required: ["dayNumber", "theme", "activities"]
+                                }
+                            }
+                        },
+                        required: ["tripTitle", "summary", "days"]
+                    }
+                }
+            };
+
+            try {
+                const data = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!rawText) {
+                    throw new Error("AI 未回傳有效內容");
+                }
+
+                currentItineraryData = JSON.parse(rawText);
+                selectedDayIndex = 0;
+                
+                renderItinerary();
+                showToast('行程規劃完成！點擊景點可預覽地圖位置', 'success');
+
+            } catch (error) {
+                console.error("生成失敗:", error);
+                showToast('生成行程時發生錯誤，請稍後再試一次。', 'error');
+                document.getElementById('welcome-placeholder').classList.remove('hidden');
+            } finally {
+                document.getElementById('loading-state').classList.add('hidden');
+                btn.disabled = false;
+                btn.classList.remove('opacity-70', 'cursor-not-allowed');
+            }
+        }
+
+        // 渲染整個行程畫面
+        function renderItinerary() {
+            if (!currentItineraryData || !currentItineraryData.days || currentItineraryData.days.length === 0) return;
+
+            // 顯示結果區塊
+            document.getElementById('result-section').classList.remove('hidden');
+
+            // 更新總覽標題卡片
+            document.getElementById('trip-title').textContent = currentItineraryData.tripTitle;
+            document.getElementById('trip-summary').textContent = currentItineraryData.summary;
+            document.getElementById('trip-days-badge').textContent = `共 ${currentItineraryData.days.length} 天行程`;
+
+            // 渲染天數切換分頁 (Tabs)
+            const tabsContainer = document.getElementById('day-tabs');
+            tabsContainer.innerHTML = '';
+
+            currentItineraryData.days.forEach((day, index) => {
+                const isSelected = index === selectedDayIndex;
+                const tabBtn = document.createElement('button');
+                tabBtn.type = 'button';
+                tabBtn.className = isSelected
+                    ? 'shrink-0 px-4 py-2.5 rounded-xl font-bold text-sm bg-teal-600 text-white shadow-sm transition cursor-pointer'
+                    : 'shrink-0 px-4 py-2.5 rounded-xl font-medium text-sm bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition cursor-pointer';
+                tabBtn.textContent = `第 ${day.dayNumber} 天`;
+                tabBtn.onclick = () => {
+                    selectedDayIndex = index;
+                    renderItinerary();
+                };
+                tabsContainer.appendChild(tabBtn);
+            });
+
+            // 渲染當前選中天數的內容
+            renderDayContent(currentItineraryData.days[selectedDayIndex]);
+        }
+
+        // 渲染單日時間軸與 Google 地圖路線連結
+        function renderDayContent(dayData) {
+            document.getElementById('current-day-theme').textContent = `Day ${dayData.dayNumber}：${dayData.theme}`;
+
+            // 產生當日多點串連 Google Maps 路線網址 (Google Maps Directions URL)
+            const queries = dayData.activities.map(act => encodeURIComponent(act.mapQuery));
+            let routeUrl = 'https://www.google.com/maps';
+            if (queries.length === 1) {
+                routeUrl = `https://www.google.com/maps/search/?api=1&query=${queries[0]}`;
+            } else if (queries.length > 1) {
+                const origin = queries[0];
+                const destination = queries[queries.length - 1];
+                const waypoints = queries.slice(1, -1).join('|');
+                routeUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ''}&travelmode=transit`;
+            }
+            document.getElementById('day-route-link').href = routeUrl;
+
+            // 渲染時間軸卡片
+            const timelineContainer = document.getElementById('timeline-container');
+            timelineContainer.innerHTML = '';
+
+            dayData.activities.forEach((act, idx) => {
+                const searchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(act.mapQuery)}`;
+                
+                // 根據分類給予不同徽章顏色
+                let badgeClass = 'bg-teal-50 text-teal-700 border-teal-200';
+                let iconClass = 'fa-camera';
+                if (act.category.includes('食') || act.category.includes('餐')) {
+                    badgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
+                    iconClass = 'fa-utensils';
+                } else if (act.category.includes('購') || act.category.includes('街')) {
+                    badgeClass = 'bg-purple-50 text-purple-700 border-purple-200';
+                    iconClass = 'fa-bag-shopping';
+                } else if (act.category.includes('古') || act.category.includes('文') || act.category.includes('寺')) {
+                    badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+                    iconClass = 'fa-torii-gate';
+                }
+
+                const card = document.createElement('div');
+                card.className = 'timeline-item relative pl-12';
+                card.innerHTML = `
+                    <!-- 時間軸圓點 -->
+                    <div class="timeline-line">
+                        <div class="absolute left-0 top-1 w-10 h-10 rounded-full bg-white border-2 border-teal-500 text-teal-600 flex items-center justify-center font-bold text-sm shadow-sm z-10">
+                            ${idx + 1}
+                        </div>
+                    </div>
+
+                    <!-- 景點卡片本體 -->
+                    <div onclick="updateMapPreview('${escapeHtml(act.placeName)}', '${escapeHtml(act.mapQuery)}')"
+                         class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 hover:border-teal-400 shadow-sm hover:shadow-md transition cursor-pointer group">
+                        
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-lg">
+                                    <i class="fa-regular fa-clock mr-1"></i>${escapeHtml(act.time)}
+                                </span>
+                                <span class="text-xs font-medium px-2.5 py-1 rounded-lg border ${badgeClass}">
+                                    <i class="fa-solid ${iconClass} mr-1"></i>${escapeHtml(act.category)}
+                                </span>
+                            </div>
+
+                            <!-- 單點 Google 地圖外部連結 -->
+                            <a href="${searchUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()"
+                               class="text-xs font-semibold text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-location-arrow text-teal-600"></i>
+                                <span>地圖導航</span>
+                            </a>
+                        </div>
+
+                        <h4 class="text-base sm:text-lg font-bold text-slate-800 group-hover:text-teal-700 transition mb-1.5">
+                            ${escapeHtml(act.placeName)}
+                        </h4>
+                        
+                        <p class="text-sm text-slate-600 leading-relaxed mb-3">
+                            ${escapeHtml(act.reason)}
+                        </p>
+
+                        <div class="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                            <span class="flex items-center gap-1.5">
+                                <i class="fa-solid fa-train-subway text-slate-400"></i>
+                                <span>${escapeHtml(act.transport)}</span>
+                            </span>
+                            <span class="text-teal-600 font-medium opacity-0 group-hover:opacity-100 transition hidden sm:inline">
+                                點擊預覽位置 →
+                            </span>
+                        </div>
+                    </div>
+                `;
+                timelineContainer.appendChild(card);
+            });
+
+            // 自動將右側地圖預覽更新為當日第一個景點
+            if (dayData.activities.length > 0) {
+                const firstAct = dayData.activities[0];
+                updateMapPreview(firstAct.placeName, firstAct.mapQuery);
+            }
+        }
+
+        // 更新右側 Google Maps Iframe 預覽
+        function updateMapPreview(placeName, mapQuery) {
+            const encodedQuery = encodeURIComponent(mapQuery);
+            const embedUrl = `https://maps.google.com/maps?q=${encodedQuery}&t=&z=15&ie=UTF8&iwloc=&output=embed`;
+            const externalUrl = `https://www.google.com/maps/search/?api=1&query=${encodedQuery}`;
+
+            document.getElementById('map-preview-title').textContent = `預覽：${placeName}`;
+            document.getElementById('google-map-iframe').src = embedUrl;
+            document.getElementById('map-external-btn').href = externalUrl;
+        }
+
+        // 複製完整文字版行程到剪貼簿 (相容 iframe 環境)
+        function copyItineraryText() {
+            if (!currentItineraryData) return;
+
+            let text = `【${currentItineraryData.tripTitle}】\n${currentItineraryData.summary}\n\n`;
+            currentItineraryData.days.forEach(day => {
+                text += `=== 第 ${day.dayNumber} 天：${day.theme} ===\n`;
+                day.activities.forEach((act, i) => {
+                    text += `${i + 1}. [${act.time}] ${act.placeName} (${act.category})\n`;
+                    text += `   💡 推薦：${act.reason}\n`;
+                    text += `   🚇 交通：${act.transport}\n`;
+                    text += `   📍 地圖：https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(act.mapQuery)}\n`;
+                });
+                text += `\n`;
+            });
+
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast('已將完整文字行程與地圖連結複製到剪貼簿！', 'success');
+            } catch (err) {
+                showToast('複製失敗，請手動選取文字複製。', 'error');
+            }
+            document.body.removeChild(textArea);
+        }
+
+        // 防止 XSS 的 HTML 跳脫函式
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
